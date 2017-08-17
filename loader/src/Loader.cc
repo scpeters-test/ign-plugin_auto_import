@@ -39,17 +39,58 @@ namespace ignition
     /// \brief PIMPL Implementation of the PluginLoader class
     class PluginLoaderPrivate
     {
-      public: using PluginMap = std::unordered_map<std::string, PluginInfo>;
+      /// \brief Directories that should be searched for plugins
+      public: std::vector<std::string> searchPaths;
 
+      using PluginToDlHandleMap =
+          std::unordered_map<std::string, std::shared_ptr<void>>;
+      /// \brief A map from known plugin names to the handle of the library that
+      /// provides it.
+      ///
+      /// CRUCIAL DEV NOTE (MXG): `pluginToDlHandlePtrs` MUST come BEFORE
+      /// `plugins` in this class definition to ensure that `plugins` gets
+      /// deleted first (member variables get destructed in the reverse order of
+      /// their appearance in the class definition). The destructors of the
+      /// `deleter` members of the PluginInfo class depend on the shared library
+      /// still being available, so this map of std::shared_ptrs to the library
+      /// handles must be destroyed after the PluginInfo.
+      ///
+      /// If you change this class definition for ANY reason, be sure to
+      /// maintain the ordering of these member variables.
+      public: PluginToDlHandleMap pluginToDlHandlePtrs;
+
+      using DlHandleMap = std::unordered_map<void*, std::weak_ptr<void>>;
+      /// \brief A map which keeps track of which shared libraries have been
+      /// loaded by this PluginLoader.
+      public: DlHandleMap dlHandlePtrMap;
+
+      using DlHandleToPluginMap =
+          std::unordered_map<void*, std::unordered_set<std::string>>;
+      /// \brief A map from the shared library handle to the names of the
+      /// plugins that it provides.
+      public: DlHandleToPluginMap dlHandleToPluginMap;
+
+      using PluginMap = std::unordered_map<std::string, PluginInfo>;
       /// \brief A map from known plugin names to their PluginInfo
+      ///
+      /// CRUCIAL DEV NOTE (MXG): `plugins` MUST come AFTER
+      /// `pluginToDlHandlePtrs` in this class definition. See the comment on
+      /// pluginToDlHandlePtrs for an explanation.
+      ///
+      /// If you change this class definition for ANY reason, be sure to
+      /// maintain the ordering of these member variables.
       public: PluginMap plugins;
 
       /// \brief attempt to load a library at the given path
-      public: void *LoadLibrary(const std::string &_pathToLibrary) const;
+      public: std::shared_ptr<void> LoadLibrary(
+        const std::string &_pathToLibrary);
 
       /// \brief get all the plugin info for a library
       public: std::vector<PluginInfo> LoadPlugins(
-        void *_dlHandle, const std::string& _pathToLibrary) const;
+        const std::shared_ptr<void> &_dlHandle,
+        const std::string& _pathToLibrary) const;
+
+      public: bool ForgetLibrary(void *_dlHandle);
     };
 
     /////////////////////////////////////////////////
@@ -214,56 +255,38 @@ namespace ignition
       }
 
       const std::string versionSymbol = "IGNCOMMONPluginAPIVersion";
-      const std::string sizeSymbol = "IGNCOMMONPluginInfoSize";
-      const std::string alignSymbol = "IGNCOMMONPluginInfoAlignment";
+      const std::string sizeSymbol = "IGNCOMMONSinglePluginInfoSize";
       const std::string multiInfoSymbol = "IGNCOMMONMultiPluginInfo";
       void *versionPtr = dlsym(_dlHandle, versionSymbol.c_str());
       void *sizePtr = dlsym(_dlHandle, sizeSymbol.c_str());
-      void *alignPtr = dlsym(_dlHandle, alignSymbol.c_str());
       void *multiInfoPtr = dlsym(_dlHandle, multiInfoSymbol.c_str());
 
       // Does the library have the right symbols?
       if (nullptr == versionPtr || nullptr == sizePtr
-          || nullptr == multiInfoPtr || nullptr == alignPtr)
+          || nullptr == multiInfoPtr)
       {
         ignerr << "Library [" << _pathToLibrary
-               << "] doesn't have the right symbols: \n"
-               << " -- version symbol: " << versionPtr
-               << "\n -- size symbol: " << sizePtr
-               << "\n -- alignment symbol: " << alignPtr
-               << "\n -- info symbol: " << multiInfoPtr << "\n";
-
+               << "] doesn't have the right symbols.\n";
         return loadedPlugins;
       }
 
       // Check abi version, and also check size because bugs happen
       int version = *(static_cast<int*>(versionPtr));
-      const std::size_t size = *(static_cast<std::size_t*>(sizePtr));
-      const std::size_t alignment = *(static_cast<std::size_t*>(alignPtr));
+      std::size_t size = *(static_cast<std::size_t*>(sizePtr));
 
       if (version < PLUGIN_API_VERSION)
       {
         ignwarn << "The library [" << _pathToLibrary <<"] is using an outdated "
                 << "version [" << version << "] of the ignition::common Plugin "
-                << "API. The version in this library is [" << PLUGIN_API_VERSION
+                << "API. The latest version is [" << PLUGIN_API_VERSION
                 << "].\n";
       }
 
-      if (version > PLUGIN_API_VERSION)
+      if (sizeof(PluginInfo) == size)
       {
-        ignerr << "The library [" << _pathToLibrary << "] is using a newer "
-               << "version [" << version << "] of the ignition::common Plugin "
-               << "API. The version in this library is [" << PLUGIN_API_VERSION
-               << "].\n";
-        return loadedPlugins;
-      }
-
-      if (sizeof(PluginInfo) == size && alignof(PluginInfo) == alignment)
-      {
-        using PluginLoadFunctionSignature =
-            std::size_t(*)(void * const, std::size_t, std::size_t);
-
-        auto Info = reinterpret_cast<PluginLoadFunctionSignature>(multiInfoPtr);
+        std::size_t (*Info)(void * const, std::size_t, std::size_t) =
+          reinterpret_cast<std::size_t(*)(void * const, std::size_t, std::size_t)>(
+              multiInfoPtr);
 
         PluginInfo plugin;
         void *vPlugin = static_cast<void *>(&plugin);
@@ -277,13 +300,11 @@ namespace ignition
       else
       {
         const size_t expectedSize = sizeof(PluginInfo);
-        const size_t expectedAlignment = alignof(PluginInfo);
 
         ignerr << "The library [" << _pathToLibrary << "] has the wrong plugin "
-               << "size or alignment for API version [" << PLUGIN_API_VERSION
-               << "]. Expected size [" << expectedSize << "], got ["
-               << size << "]. Expected alignment [" << expectedAlignment
-               << "], got [" << alignment << "].\n";
+               << "size for API version [" << PLUGIN_API_VERSION
+               << "]. Expected [" << expectedSize << "], got ["
+               << size << "]\n";
 
         return loadedPlugins;
       }
