@@ -30,7 +30,7 @@ namespace ignition
     // Forward declarations
     struct PluginInfo;
     class PluginPrivate;
-    class PluginLoader;
+    namespace detail { template <class, class> class ComposePlugin; }
 
     class Plugin
     {
@@ -81,7 +81,7 @@ namespace ignition
               std::shared_ptr<const Interface> as_shared_ptr(
                   const std::string &_interfaceName) const;
 
-      /// \brief Returns true if this Plugin has the specified type of
+      /// \brief Returns true if this PluginPtr has the specified type of
       /// interface. Note that this function only works when the Interface type
       /// is specialized using the macro IGN_COMMON_SPECIALIZE_INTERFACE. For
       /// more general interfaces which do not meet this condition, use
@@ -89,14 +89,14 @@ namespace ignition
       public: template <class Interface>
               bool HasInterface() const;
 
-      /// \brief Returns true if this Plugin has the specified type of
+      /// \brief Returns true if this PluginPtr has the specified type of
       /// interface.
       public: bool HasInterface(const std::string &_interfaceName) const;
 
       /// \brief This function always returns false if it is called on this
-      /// basic Plugin class type. The SpecializedPlugin can shadow this
+      /// basic PluginPtr class type. The SpecializedPluginPtr can shadow this
       /// to return true when it is specialized for this Interface type, however
-      /// the function must be called on the SpecializedPlugin type and not
+      /// the function must be called on the SpecializedPluginPtr type and not
       /// this base class type, because this is a shadowed function, not a
       /// virtual function.
       public: template <class Interface>
@@ -105,7 +105,9 @@ namespace ignition
 
       // -------------------- Private API -----------------------
 
-      friend class PluginLoader;
+      template <class> friend class TemplatePluginPtr;
+      template <class...> friend class SpecializedPlugin;
+      template <class...> friend class detail::ComposePlugin;
 
       /// \brief Default constructor. This is kept private to ensure that
       /// Plugins are always managed by a PluginPtr object.
