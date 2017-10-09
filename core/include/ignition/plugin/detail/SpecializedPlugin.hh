@@ -252,7 +252,7 @@ namespace ignition
         template <class...> friend class SpecializedPlugin;
         template <class, class> friend class ComposePlugin;
 
-        private: ComposePlugin() = default;
+        protected: ComposePlugin() = default;
       };
     }
 
