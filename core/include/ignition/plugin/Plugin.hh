@@ -78,13 +78,13 @@ namespace ignition
       /// This pointer is invalidated when the reference count of the plugin
       /// instance drops to zero.
       public: template <class Interface>
-              Interface *QueryInterface(const std::string &_interfaceName);
+              Interface *QueryInterface(const std::string &/*_interfaceName*/);
 
       /// \brief const-qualified version of
       /// QueryInterface<Interface>(std::string)
       public: template <class Interface>
               const Interface *QueryInterface(
-                  const std::string &_interfaceName) const;
+                  const std::string &/*_interfaceName*/) const;
 
       /// \brief Get the requested interface as a std::shared_ptr. Note that
       /// this function only works when the Interface type is specialized using
@@ -120,13 +120,13 @@ namespace ignition
       /// all Plugin objects that refer to this plugin instance are destructed.
       public: template <class Interface>
               std::shared_ptr<Interface> QueryInterfaceSharedPtr(
-                  const std::string &_interfaceName);
+                  const std::string &/*_interfaceName*/);
 
       /// \brief Same as QueryInterfaceSharedPtr<Interface>(std::string), but
       /// it returns a std::shared_ptr to a const-qualified Interface.
       public: template <class Interface>
               std::shared_ptr<const Interface> QueryInterfaceSharedPtr(
-                  const std::string &_interfaceName) const;
+                  const std::string &/*_interfaceName*/) const;
 
       /// \brief Returns true if this Plugin has the specified type of
       /// interface. Note that this function only works when the Interface type

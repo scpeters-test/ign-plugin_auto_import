@@ -19,7 +19,6 @@
 #include "ignition/common/Plugin.hh"
 #include "ignition/common/PluginInfo.hh"
 #include "ignition/common/Console.hh"
-#include "PluginUtils.hh"
 
 namespace ignition
 {
@@ -125,8 +124,7 @@ namespace ignition
     bool Plugin::HasInterface(
         const std::string &_interfaceName) const
     {
-      const std::string interfaceName = NormalizeName(_interfaceName);
-      return (this->dataPtr->interfaces.count(interfaceName) != 0);
+      return (this->dataPtr->interfaces.count(_interfaceName) != 0);
     }
 
     //////////////////////////////////////////////////
@@ -140,8 +138,7 @@ namespace ignition
     void *Plugin::PrivateGetInterface(
         const std::string &_interfaceName) const
     {
-      const std::string interfaceName = NormalizeName(_interfaceName);
-      const auto &it = this->dataPtr->interfaces.find(interfaceName);
+      const auto &it = this->dataPtr->interfaces.find(_interfaceName);
       if (this->dataPtr->interfaces.end() == it)
         return nullptr;
 
@@ -173,7 +170,7 @@ namespace ignition
       // We want to use the insert function here to avoid accidentally
       // overwriting a value which might exist at the desired map key.
       return this->dataPtr->interfaces.insert(
-            std::make_pair(NormalizeName(_interfaceName), nullptr)).first;
+            std::make_pair(_interfaceName, nullptr)).first;
     }
 
     //////////////////////////////////////////////////
