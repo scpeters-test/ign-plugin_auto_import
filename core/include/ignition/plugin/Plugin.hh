@@ -163,11 +163,13 @@ namespace ignition
       private: void PrivateCopyPluginInstance(const Plugin &_other) const;
 
       /// \brief Create a new plugin instance based on the info provided
-      private: void PrivateSetPluginInstance(const PluginInfo *_info) const;
+      private: void PrivateSetPluginInstance(
+                  const PluginInfo *_info,
+                  const std::shared_ptr<void> &_dlHandlePtr) const;
 
       /// \brief Get a reference to the std::shared_ptr being managed by this
       /// wrapper
-      private: const std::shared_ptr<void>& PrivateGetInstancePtr() const;
+      private: const std::shared_ptr<void> &PrivateGetInstancePtr() const;
 
       /// \brief The InterfaceMap type needs to get used in several places, like
       /// PluginPrivate and SpecializedPlugin<T>. We make the typedef public so
