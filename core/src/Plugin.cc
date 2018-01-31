@@ -19,7 +19,6 @@
 #include "ignition/common/Plugin.hh"
 #include "ignition/common/PluginInfo.hh"
 #include "ignition/common/Console.hh"
-#include "PluginUtils.hh"
 
 namespace ignition
 {
@@ -31,34 +30,6 @@ namespace ignition
     /// loaded for as long as the plugin instance continues to exist.
     struct PluginWithDlHandle
     {
-      /// \brief A reference counting handle for the shared library that this
-      /// plugin depends on.
-      ///
-      /// CRUCIAL DEV NOTE (MXG): `dlHandlePtr` MUST come BEFORE `deleter` in
-      /// this class definition to ensure that `deleter` gets deleted first
-      /// (member variables get destructed in the reverse order of their
-      /// appearance in the class definition). The destructor of `deleter`
-      /// depends on the shared library still being available, so this reference
-      /// counting handle must be destroyed after `deleter` to ensure that the
-      /// library is still loaded when `deleter` needs it.
-      ///
-      /// If you change this class definition for ANY reason, be sure to
-      /// maintain the ordering of these member variables.
-      public: std::shared_ptr<void> dlHandlePtr;
-
-      /// \brief Pointer to the plugin instance
-      public: void *loadedInstance;
-
-      /// \brief Deleter function for the plugin instance
-      ///
-      /// CRUCIAL DEV NOTE (MXG): `deleter` MUST come AFTER `dlHandlePtr` in
-      /// this class definition. See the comment on `dlHandlePtr` for an
-      /// explanation.
-      ///
-      /// If you change this class definition for ANY reason, be sure to
-      /// maintain the ordering of these member variables.
-      public: std::function<void(void*)> deleter;
-
       /// \brief Constructor
       public: PluginWithDlHandle(
         void *_loadedInstance,
@@ -97,10 +68,135 @@ namespace ignition
           return;
         }
       }
+
+      /// \brief A reference counting handle for the shared library that this
+      /// plugin depends on.
+      ///
+      /// CRUCIAL DEV NOTE (MXG): `dlHandlePtr` MUST come BEFORE `deleter` in
+      /// this class definition to ensure that `deleter` gets deleted first
+      /// (member variables get destructed in the reverse order of their
+      /// appearance in the class definition). The destructor of `deleter`
+      /// depends on the shared library still being available, so this reference
+      /// counting handle must be destroyed after `deleter` to ensure that the
+      /// library is still loaded when `deleter` needs it.
+      ///
+      /// If you change this class definition for ANY reason, be sure to
+      /// maintain the ordering of these member variables.
+      public: std::shared_ptr<void> dlHandlePtr;
+
+      /// \brief Pointer to the plugin instance
+      public: void *loadedInstance;
+
+      /// \brief Deleter function for the plugin instance
+      ///
+      /// CRUCIAL DEV NOTE (MXG): `deleter` MUST come AFTER `dlHandlePtr` in
+      /// this class definition. See the comment on `dlHandlePtr` for an
+      /// explanation.
+      ///
+      /// If you change this class definition for ANY reason, be sure to
+      /// maintain the ordering of these member variables.
+      public: std::function<void(void*)> deleter;
     };
 
     class PluginPrivate
     {
+      /// \brief Clear this PluginPrivate without invaliding any map entry
+      /// iterators.
+      public: void Clear()
+      {
+        this->loadedInstancePtr.reset();
+        this->info.Clear();
+
+        // Dev note (MXG): We must NOT call clear() on the InterfaceMap or
+        // remove ANY of the map entries, because that would potentially
+        // invalidate all of the iterators that are pointing to map entries.
+        // This would break any specialized plugins that provide instant access
+        // to specialized interfaces. Instead, we simply overwrite the map
+        /// entries with a nullptr.
+        for (auto& entry : this->interfaces)
+          entry.second = nullptr;
+      }
+
+      /// \brief Initialize this PluginPrivate using some PluginInfo instance
+      public: void Initialize(const PluginInfo *_info,
+                              const std::shared_ptr<void> &_dlHandlePtr)
+      {
+        this->Clear();
+
+        if (!_info)
+          return;
+
+        this->info = *_info;
+
+        if (!_dlHandlePtr)
+        {
+          ignerr << "Received PluginInfo for [" << _info->name << "], "
+                 << "but we were not provided a shared library handle. "
+                 << "This should never happen! Please report this "
+                 << "bug!\n";
+          assert(false);
+          return;
+        }
+
+        // Create a std::shared_ptr to a struct which ensures that the
+        // _dlHandlePtr will remain alive for as long as this plugin instance
+        // exists.
+        std::shared_ptr<PluginWithDlHandle> pluginWithDlHandle =
+            std::make_shared<PluginWithDlHandle>(
+              _info->factory(), _info->deleter, _dlHandlePtr);
+
+        // Use the aliasing constructor of std::shared_ptr to disguise
+        // pluginWithDlHandle as just a simple std::shared_ptr<void> which
+        // points at the plugin instance, so we have the benefit of
+        // automatically managing the lifecycle of the dlHandlePtr without
+        // needing to actually keep track of it.
+        this->loadedInstancePtr =
+            std::shared_ptr<void>(
+              pluginWithDlHandle,
+              pluginWithDlHandle->loadedInstance);
+
+        for (const auto &entry : _info->interfaces)
+        {
+          // entry.first:  name of the interface
+          // entry.second: function which casts the loadedInstance pointer to
+          //               the correct location of the interface within the
+          //               plugin
+          this->interfaces[entry.first] =
+              entry.second(this->loadedInstancePtr.get());
+        }
+      }
+
+      /// \brief Initialize this PluginPrivate using another instance
+      /// \param[in] _other Another instance of a PluginPrivate object
+      public: void Initialize(const PluginPrivate *_other)
+      {
+        this->Clear();
+
+        if (!_other)
+        {
+          ignerr << "Received a nullptr _other in the constructor "
+                 << "which uses `const PluginPrivate*`. This should "
+                 << "not be possible! Please report this bug."
+                 << std::endl;
+          assert(false);
+          return;
+        }
+
+        this->loadedInstancePtr = _other->loadedInstancePtr;
+        this->info = _other->info;
+
+        if (this->loadedInstancePtr)
+        {
+          for (const auto &entry : _other->interfaces)
+          {
+            // entry.first:  name of the interface
+            // entry.second: pointer to the location of that interface within
+            //               the plugin instance
+            this->interfaces[entry.first] = entry.second;
+          }
+        }
+      }
+
       /// \brief Map from interface names to their locations within the plugin
       /// instance
       //
@@ -120,107 +216,42 @@ namespace ignition
       public: Plugin::InterfaceMap interfaces;
 
       /// \brief shared_ptr which manages the lifecycle of the plugin instance.
+      ///
+      /// CRUCIAL DEV NOTE (MXG): `loadedInstancePtr` must come BEFORE `info` in
+      /// this class definition to ensure that `info` gets deleted first (member
+      /// variables get destructed in the reverse order of their appearance in
+      /// the class definition). The destructor of `info` depends on the shared
+      /// library still being available, so this reference counting handle must
+      /// be destroyed after `info` to ensure that the library is still loaded
+      /// when `info` needs it.
+      ///
+      /// If you change this class definition for ANY reason, be sure to
+      /// maintain the ordering of these member variables.
       public: std::shared_ptr<void> loadedInstancePtr;
 
-      /// \brief Clear this PluginPrivate without invaliding any map entry
-      /// iterators.
-      public: void Clear()
-              {
-                this->loadedInstancePtr.reset();
-
-                // Dev note (MXG): We must NOT call clear() on the InterfaceMap
-                // or remove ANY of the map entries, because that would
-                // potentially invalidate all of the iterators that are pointing
-                // to map entries. This would break any specialized plugins that
-                // provide instant access to specialized interfaces. Instead, we
-                // simply overwrite the map entries with a nullptr.
-                for (auto& entry : this->interfaces)
-                  entry.second = nullptr;
-              }
-
-      /// \brief Initialize this PluginPrivate using some PluginInfo instance
-      public: void Initialize(const PluginInfo *_info,
-                              const std::shared_ptr<void> &_dlHandlePtr)
-              {
-                this->Clear();
-
-                if (!_info)
-                  return;
-
-                if (!_dlHandlePtr)
-                {
-                  ignerr << "Received PluginInfo for [" << _info->name << "], "
-                         << "but we were not provided a shared library handle. "
-                         << "This should never happen! Please report this "
-                         << "bug!\n";
-                  assert(false);
-                  return;
-                }
-
-                // Create a std::shared_ptr to a struct which ensures that the
-                // _dlHandlePtr will remain alive for as long as this plugin
-                // instance exists.
-                std::shared_ptr<PluginWithDlHandle> pluginWithDlHandle =
-                    std::make_shared<PluginWithDlHandle>(
-                      _info->factory(), _info->deleter, _dlHandlePtr);
-
-                // Use the aliasing constructor of std::shared_ptr to disguise
-                // pluginWithDlHandle as just a simple std::shared_ptr<void>
-                // which points at the plugin instance, so we have the benefit
-                // of automatically managing the lifecycle of the dlHandlePtr
-                // without needing to actually keep track of it.
-                this->loadedInstancePtr =
-                    std::shared_ptr<void>(
-                      pluginWithDlHandle,
-                      pluginWithDlHandle->loadedInstance);
-
-                for (const auto &entry : _info->interfaces)
-                {
-                  // entry.first:  name of the interface
-                  // entry.second: function which casts the loadedInstance
-                  //               pointer to the correct location of the
-                  //               interface within the plugin
-                  this->interfaces[entry.first] =
-                      entry.second(this->loadedInstancePtr.get());
-                }
-              }
-
-      /// \brief Initialize this PluginPrivate using another instance
-      public: void Initialize(const PluginPrivate *_other)
-              {
-                this->Clear();
-
-                if (!_other)
-                {
-                  ignerr << "Received a nullptr _other in the constructor "
-                         << "which uses `const PluginPrivate*`. This should "
-                         << "not be possible! Please report this bug."
-                         << std::endl;
-                  assert(false);
-                  return;
-                }
-
-                this->loadedInstancePtr = _other->loadedInstancePtr;
-
-                if (this->loadedInstancePtr)
-                {
-                  for (const auto &entry : _other->interfaces)
-                  {
-                    // entry.first:  name of the interface
-                    // entry.second: pointer to the location of that interface
-                    //               within the plugin instance
-                    this->interfaces[entry.first] = entry.second;
-                  }
-                }
-              }
+      /// \brief A copy of the PluginInfo that was used to create the Plugin
+      ///
+      /// CRUCIAL DEV NOTE (MXG): `info` must come AFTER `loadedInstancePtr` in
+      /// this class definition. See the comment on `loadedInstancePtr` for an
+      /// explanation.
+      ///
+      /// If you change this class definition for ANY reason, be sure to
+      /// maintain the ordering of these member variables.
+      public: PluginInfo info;
     };
 
     //////////////////////////////////////////////////
     bool Plugin::HasInterface(
-        const std::string &_interfaceName) const
+        const std::string &_interfaceName,
+        const bool _demangled) const
     {
-      const std::string interfaceName = NormalizeName(_interfaceName);
-      return (this->dataPtr->interfaces.count(interfaceName) != 0);
+      if (_demangled)
+      {
+        return (this->dataPtr->info.demangledInterfaces
+                .count(_interfaceName) != 0);
+      }
+
+      return (this->dataPtr->interfaces.count(_interfaceName) != 0);
     }
 
     //////////////////////////////////////////////////
@@ -231,11 +262,10 @@ namespace ignition
     }
 
     //////////////////////////////////////////////////
-    void *Plugin::PrivateGetInterface(
+    void *Plugin::PrivateQueryInterface(
         const std::string &_interfaceName) const
     {
-      const std::string interfaceName = NormalizeName(_interfaceName);
-      const auto &it = this->dataPtr->interfaces.find(interfaceName);
+      const auto &it = this->dataPtr->interfaces.find(_interfaceName);
       if (this->dataPtr->interfaces.end() == it)
         return nullptr;
 
@@ -269,7 +299,7 @@ namespace ignition
       // We want to use the insert function here to avoid accidentally
       // overwriting a value which might exist at the desired map key.
       return this->dataPtr->interfaces.insert(
-            std::make_pair(NormalizeName(_interfaceName), nullptr)).first;
+            std::make_pair(_interfaceName, nullptr)).first;
     }
 
     //////////////////////////////////////////////////

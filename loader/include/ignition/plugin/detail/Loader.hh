@@ -15,17 +15,22 @@
  *
  */
 
-
 #ifndef IGNITION_COMMON_DETAIL_PLUGINLOADER_HH_
 #define IGNITION_COMMON_DETAIL_PLUGINLOADER_HH_
 
 #include <string>
-#include "ignition/common/PluginLoader.hh"
+#include <ignition/common/PluginLoader.hh>
 
 namespace ignition
 {
   namespace common
   {
+    template <typename Interface>
+    std::unordered_set<std::string> PluginLoader::PluginsImplementing() const
+    {
+      return this->PluginsImplementing(typeid(Interface).name(), false);
+    }
+
     template <typename PluginPtrType>
     PluginPtrType PluginLoader::Instantiate(
         const std::string &_pluginName) const

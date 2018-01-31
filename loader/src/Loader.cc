@@ -22,45 +22,78 @@
 #include <sstream>
 #include <unordered_map>
 
+#if defined(__GNUC__) or defined(__clang__)
+// This header is used for name demangling on GCC and Clang
+#include <cxxabi.h>
+#endif
+
 #include "ignition/common/Console.hh"
 #include "ignition/common/PluginPtr.hh"
 #include "ignition/common/PluginInfo.hh"
 #include "ignition/common/PluginLoader.hh"
 #include "ignition/common/StringUtils.hh"
 #include "ignition/common/Util.hh"
-
-#include "PluginUtils.hh"
+#include "ignition/common/Plugin.hh"
 
 namespace ignition
 {
   namespace common
   {
     /////////////////////////////////////////////////
+    std::string Demangle(const std::string &_name)
+    {
+#if defined(__GNUC__) or defined(__clang__)
+      int status;
+      char *demangled_cstr = abi::__cxa_demangle(
+            _name.c_str(), nullptr, nullptr, &status);
+
+      if (0 != status)
+      {
+        ignerr << "[Demangle] Failed to demangle the symbol name [" << _name
+               << "]. Error code: " << status << "\n";
+        return _name;
+      }
+
+      const std::string demangled(demangled_cstr);
+      free(demangled_cstr);
+
+      return demangled;
+#elif _MSC_VER
+
+      assert(_name.substr(0, 6) == "class ");
+
+      // Visual Studio's typeid(~).name() does not mangle the name, except that
+      // it prefixes the normal name of the class with the character sequence
+      // "class ". So to get the "demangled" name, all we have to do is remove
+      // the first six characters. The plugin framework does not handle any
+      // non-class types, so we do not lose anything by removing the "class "
+      // designator.
+      return _name.substr(6);
+#else
+      // If we don't know the compiler, then we can't perform name demangling.
+      // The tests will probably fail in this situation, and the class names
+      // will probably look gross to users. Plugin name aliasing can be used
+      // to make plugins robust to this situation.
+      return _name;
+#endif
+    }
+
+    /////////////////////////////////////////////////
     /// \brief PIMPL Implementation of the PluginLoader class
     class PluginLoaderPrivate
     {
-      /// \brief Attempt to load a library at the given path.
-      /// \param[in] _pathToLibrary The full path to the desired library
-      /// \return If a library exists at the given path, get a point to its dl
-      /// handle. If the library does not exist, get a nullptr.
+      /// \brief attempt to load a library at the given path
       public: std::shared_ptr<void> LoadLibrary(
         const std::string &_pathToLibrary);
 
-      /// \brief Using a dl handle produced by LoadLibrary, extract the
-      /// PluginInfo from the loaded library.
-      /// \param[in] _dlHandle A handle produced by LoadLibrary
-      /// \param[in] _pathToLibrary The path that the library was loaded from
-      /// (used for debug purposes)
-      /// \return All the PluginInfo provided by the loaded library.
+      /// \brief get all the plugin info for a library
       public: std::vector<PluginInfo> LoadPlugins(
         const std::shared_ptr<void> &_dlHandle,
         const std::string& _pathToLibrary) const;
 
-
       public: bool ForgetLibrary(void *_dlHandle);
 
-
-      using PluginToDlHandleMap =
+      public: using PluginToDlHandleMap =
           std::unordered_map< std::string, std::shared_ptr<void> >;
       /// \brief A map from known plugin names to the handle of the library that
       /// provides it.
@@ -77,18 +110,7 @@ namespace ignition
       /// maintain the ordering of these member variables.
       public: PluginToDlHandleMap pluginToDlHandlePtrs;
 
-      using DlHandleMap = std::unordered_map< void*, std::weak_ptr<void> >;
-      /// \brief A map which keeps track of which shared libraries have been
-      /// loaded by this PluginLoader.
-      public: DlHandleMap dlHandlePtrMap;
-
-      using DlHandleToPluginMap =
-          std::unordered_map< void*, std::unordered_set<std::string> >;
-      /// \brief A map from the shared library handle to the names of the
-      /// plugins that it provides.
-      public: DlHandleToPluginMap dlHandleToPluginMap;
-
-      using PluginMap = std::unordered_map<std::string, PluginInfo>;
+      public: using PluginMap = std::unordered_map<std::string, PluginInfo>;
       /// \brief A map from known plugin names to their PluginInfo
       ///
       /// CRUCIAL DEV NOTE (MXG): `plugins` MUST come AFTER
@@ -98,6 +120,17 @@ namespace ignition
       /// If you change this class definition for ANY reason, be sure to
       /// maintain the ordering of these member variables.
       public: PluginMap plugins;
+
+      using DlHandleMap = std::unordered_map< void*, std::weak_ptr<void> >;
+      /// \brief A map which keeps track of which shared libraries have been
+      /// loaded by this PluginLoader.
+      public: DlHandleMap dlHandlePtrMap;
+
+      public: using DlHandleToPluginMap =
+          std::unordered_map< void*, std::unordered_set<std::string> >;
+      /// \brief A map from the shared library handle to the names of the
+      /// plugins that it provides.
+      public: DlHandleToPluginMap dlHandleToPluginMap;
     };
 
     /////////////////////////////////////////////////
@@ -117,8 +150,8 @@ namespace ignition
         const size_t iSize = plugin.interfaces.size();
         pretty << "\t\t[" << plugin.name << "] which implements "
                << iSize << PluralCast(" interface", iSize) << ":\n";
-        for (const auto &interface : plugin.interfaces)
-          pretty << "\t\t\t" << interface.first << "\n";
+        for (const auto &interface : plugin.demangledInterfaces)
+          pretty << "\t\t\t" << interface << "\n";
       }
       pretty << std::endl;
 
@@ -165,29 +198,21 @@ namespace ignition
 
       for (PluginInfo &plugin : loadedPlugins)
       {
-        if (plugin.name.empty())
-          continue;
+        // Demangle the plugin name before creating an entry for it.
+        plugin.name = Demangle(plugin.name);
 
-        plugin.name = NormalizeName(plugin.name);
+        // Make a list of the demangled interface names for later convenience.
+        for (auto const &interface : plugin.interfaces)
+          plugin.demangledInterfaces.insert(Demangle(interface.first));
 
-        PluginInfo::InterfaceCastingMap normalizedMap;
-        normalizedMap.reserve(plugin.interfaces.size());
-        for (const auto &interface : plugin.interfaces)
-          normalizedMap.insert(std::make_pair(
-                   NormalizeName(interface.first),
-                   interface.second));
-        plugin.interfaces = normalizedMap;
+        // Add the plugin to the map
+        this->dataPtr->plugins.insert(std::make_pair(plugin.name, plugin));
 
-        this->dataPtr->plugins[plugin.name] = plugin;
+        // Add the plugin's name to the set of newPlugins
         newPlugins.insert(plugin.name);
 
+        // Save the dl handle for this plugin
         this->dataPtr->pluginToDlHandlePtrs[plugin.name] = dlHandle;
-      }
-
-      if (loadedPlugins.empty())
-      {
-        ignerr << "Failed to load any plugins from library ["
-               << _pathToLibrary << "].\n";
       }
 
       dataPtr->dlHandleToPluginMap[dlHandle.get()] = newPlugins;
@@ -201,23 +226,36 @@ namespace ignition
       std::unordered_set<std::string> interfaces;
       for (auto const &plugin : this->dataPtr->plugins)
       {
-        for (auto const &interface : plugin.second.interfaces)
-          interfaces.insert(interface.first);
+        for (auto const &interface : plugin.second.demangledInterfaces)
+          interfaces.insert(interface);
       }
       return interfaces;
     }
 
     /////////////////////////////////////////////////
     std::unordered_set<std::string> PluginLoader::PluginsImplementing(
-        const std::string &_interface) const
+        const std::string &_interface,
+        const bool demangled) const
     {
-      const std::string interface = NormalizeName(_interface);
       std::unordered_set<std::string> plugins;
-      for (auto const &plugin : this->dataPtr->plugins)
+
+      if (demangled)
       {
-        if (plugin.second.interfaces.find(interface) !=
-           plugin.second.interfaces.end())
-          plugins.insert(plugin.second.name);
+        for (auto const &plugin : this->dataPtr->plugins)
+        {
+          if (plugin.second.demangledInterfaces.find(_interface) !=
+              plugin.second.demangledInterfaces.end())
+            plugins.insert(plugin.second.name);
+        }
+      }
+      else
+      {
+        for (auto const &plugin : this->dataPtr->plugins)
+        {
+          if (plugin.second.interfaces.find(_interface) !=
+              plugin.second.interfaces.end())
+            plugins.insert(plugin.second.name);
+        }
       }
 
       return plugins;
@@ -237,8 +275,15 @@ namespace ignition
       if (!exists(_pathToLibrary))
         return false;
 
+#ifndef RTLD_NOLOAD
+// This macro is not part of the POSIX standard, and is a custom addition to
+// glibc-2.2, so we need create a no-op stand-in flag for it if we are not
+// using glibc-2.2.
+#define RTLD_NOLOAD 0
+#endif
+
       void *dlHandle = dlopen(_pathToLibrary.c_str(),
-                              RTLD_NOLOAD | RTLD_LAZY | RTLD_GLOBAL);
+                              RTLD_NOLOAD | RTLD_LAZY | RTLD_LOCAL);
 
       if (!dlHandle)
         return false;
@@ -251,14 +296,14 @@ namespace ignition
       // overall behavior of dlopen).
       dlclose(dlHandle);
 
-      return dataPtr->ForgetLibrary(dlHandle);
+      return this->dataPtr->ForgetLibrary(dlHandle);
     }
 
     /////////////////////////////////////////////////
     bool PluginLoader::ForgetLibraryOfPlugin(const std::string &_pluginName)
     {
       PluginLoaderPrivate::PluginToDlHandleMap::iterator it =
-          dataPtr->pluginToDlHandlePtrs.find(NormalizeName(_pluginName));
+          dataPtr->pluginToDlHandlePtrs.find(_pluginName);
 
       if (dataPtr->pluginToDlHandlePtrs.end() == it)
         return false;
@@ -270,15 +315,13 @@ namespace ignition
     const PluginInfo *PluginLoader::PrivateGetPluginInfo(
         const std::string &_pluginName) const
     {
-      const std::string plugin = NormalizeName(_pluginName);
-
       PluginLoaderPrivate::PluginMap::const_iterator it =
-          this->dataPtr->plugins.find(plugin);
+          this->dataPtr->plugins.find(_pluginName);
 
       if (this->dataPtr->plugins.end() == it)
       {
         ignerr << "Failed to get info for plugin ["
-               << plugin
+               << _pluginName
                << "] since it has not been loaded."
                << std::endl;
         return nullptr;
@@ -292,7 +335,7 @@ namespace ignition
         const std::string &_pluginName) const
     {
       PluginLoaderPrivate::PluginToDlHandleMap::iterator it =
-          dataPtr->pluginToDlHandlePtrs.find(NormalizeName(_pluginName));
+          dataPtr->pluginToDlHandlePtrs.find(_pluginName);
 
       if (this->dataPtr->pluginToDlHandlePtrs.end() == it)
         return nullptr;
@@ -311,7 +354,9 @@ namespace ignition
       // state gets cleared each time it is called.
       dlerror();
 
-      void *dlHandle = dlopen(_full_path.c_str(), RTLD_LAZY|RTLD_GLOBAL);
+      // NOTE: We open using RTLD_LOCAL instead of RTLD_GLOBAL to prevent the
+      // symbols of different libraries from writing over each other.
+      void *dlHandle = dlopen(_full_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
 
       const char *loadError = dlerror();
       if (nullptr == dlHandle || nullptr != loadError)
@@ -379,10 +424,7 @@ namespace ignition
         // it is no longer active), so we should create a reference counting
         // handle for it.
         dlHandlePtr = std::shared_ptr<void>(
-              dlHandle, [](void *ptr)
-              {
-                dlclose(ptr);
-              });
+              dlHandle, [](void *ptr) { dlclose(ptr); }); // NOLINT
 
         it->second = dlHandlePtr;
       }
@@ -403,44 +445,64 @@ namespace ignition
         return loadedPlugins;
       }
 
-      const std::string versionSymbol = "IGNCOMMONPluginAPIVersion";
-      const std::string sizeSymbol = "IGNCOMMONPluginInfoSize";
-      const std::string alignSymbol = "IGNCOMMONPluginInfoAlignment";
-      const std::string multiInfoSymbol = "IGNCOMMONMultiPluginInfo";
-      void *versionPtr = dlsym(_dlHandle.get(), versionSymbol.c_str());
-      void *sizePtr = dlsym(_dlHandle.get(), sizeSymbol.c_str());
-      void *alignPtr = dlsym(_dlHandle.get(), alignSymbol.c_str());
-      void *multiInfoPtr = dlsym(_dlHandle.get(), multiInfoSymbol.c_str());
+      const std::string infoSymbol = "IGNCOMMONInputOrOutputPluginInfo";
+      void *infoFuncPtr = dlsym(_dlHandle.get(), infoSymbol.c_str());
 
-      // Does the library have the right symbols?
-      if (nullptr == versionPtr || nullptr == sizePtr
-          || nullptr == multiInfoPtr || nullptr == alignPtr)
+      // Does the library have the right symbol?
+      if (nullptr == infoFuncPtr)
       {
-        ignerr << "Library [" << _pathToLibrary
-               << "] doesn't have the right symbols:\n"
-               << " -- version symbol: " << versionPtr
-               << "\n -- size symbol: " << sizePtr
-               << "\n -- alignment symbol: " << alignPtr
-               << "\n -- info symbol: " << multiInfoPtr << "\n";
+        ignerr << "Library [" << _pathToLibrary << "] does not export any "
+               << "plugins. The symbol [" << infoSymbol << "] is missing, or "
+               << "it is not externally visible.\n";
 
         return loadedPlugins;
       }
 
-      // Check abi version, and also check size because bugs happen
-      const int version = *(static_cast<int*>(versionPtr));
-      const std::size_t size = *(static_cast<std::size_t*>(sizePtr));
-      const std::size_t alignment = *(static_cast<std::size_t*>(alignPtr));
+      using PluginLoadFunctionSignature =
+          void(*)(void * const, const void ** const,
+                  int *, std::size_t *, std::size_t *);
 
-      if (version < PLUGIN_API_VERSION)
-      {
-        ignwarn << "The library [" << _pathToLibrary <<"] is using an outdated "
-                << "version [" << version << "] of the ignition::common Plugin "
-                << "API. The version in this library is [" << PLUGIN_API_VERSION
-                << "].\n";
-      }
+      // Note: Info (below) is a function with a signature that matches
+      // PluginLoadFunctionSignature.
+      auto Info = reinterpret_cast<PluginLoadFunctionSignature>(infoFuncPtr);
 
-      if (version > PLUGIN_API_VERSION)
+      int version = PLUGIN_API_VERSION;
+      std::size_t size = sizeof(PluginInfo);
+      std::size_t alignment = alignof(PluginInfo);
+      const PluginInfoMap *allInfo = nullptr;
+
+      // Note: static_cast cannot be used to convert from a T** to a void**
+      // because of the possibility of breaking the type system by assigning a
+      // Non-T pointer to the T* memory location. However, we need to retrieve
+      // a reference to an STL-type using a C-compatible function signature, so
+      // we resort to a reinterpret_cast to achieve this.
+      //
+      // Despite its many dangers, reinterpret_cast is well-defined for casting
+      // between pointer types as of C++11, as explained in bullet point 1 of
+      // the "Explanation" section in this reference:
+      // http://en.cppreference.com/w/cpp/language/reinterpret_cast
+      //
+      // We have a tight grip over the implementation of how the `allInfo`
+      // pointer gets used, so we do not need to worry about its memory address
+      // being filled with a non-compatible type. The only risk would be if a
+      // user decides to implement their own version of
+      // IGNCOMMONInputOrOutputPluginInfo, but they surely would have no
+      // incentive in doing that.
+      //
+      // Also note that the main reason we jump through these hoops is in order
+      // to safely support plugin libraries on Windows that choose to compile
+      // against the static runtime. Using this pointer-to-a-pointer approach is
+      // the cleanest way to ensure that all dynamically allocated objects are
+      // deleted in the same heap that they were allocated from.
+      Info(nullptr, reinterpret_cast<const void** const>(&allInfo),
+           &version, &size, &alignment);
+
+      if (ignition::common::PLUGIN_API_VERSION != version)
       {
+        // TODO: When we need to support multiple API versions, put the logic
+        // for it into here. We can call Info(~) again with the API version that
+        // it expects.
+
         ignerr << "The library [" << _pathToLibrary << "] is using a newer "
                << "version [" << version << "] of the ignition::common Plugin "
                << "API. The version in this library is [" << PLUGIN_API_VERSION
@@ -448,40 +510,32 @@ namespace ignition
         return loadedPlugins;
       }
 
-      if (sizeof(PluginInfo) == size && alignof(PluginInfo) == alignment)
+      if (sizeof(PluginInfo) != size || alignof(PluginInfo) != alignment)
       {
-        using PluginLoadFunctionSignature =
-            std::size_t(*)(void * * const,
-                           const std::size_t,
-                           const std::size_t);
-
-        // Info here is a function which matches the function signature defined
-        // by PluginLoadFunctionSignature. Info(~) will be used to extract the
-        // information about each plugin from the loaded library.
-        auto Info = reinterpret_cast<PluginLoadFunctionSignature>(multiInfoPtr);
-
-        PluginInfo * ptrToPlugin = nullptr;
-        void ** vPlugin = reinterpret_cast<void **>(&ptrToPlugin);
-
-        size_t id = 0;
-        while (Info(vPlugin, id, sizeof(PluginInfo)) > 0)
-        {
-          loadedPlugins.push_back(*ptrToPlugin);
-          ++id;
-        }
-      }
-      else
-      {
-        const size_t expectedSize = sizeof(PluginInfo);
-        const size_t expectedAlignment = alignof(PluginInfo);
-
-        ignerr << "The library [" << _pathToLibrary << "] has the wrong plugin "
-               << "size or alignment for API version [" << PLUGIN_API_VERSION
-               << "]. Expected size [" << expectedSize << "], got ["
-               << size << "]. Expected alignment [" << expectedAlignment
-               << "], got [" << alignment << "].\n";
+        ignerr << "The PluginInfo size or alignment are not consistent with "
+               << "the expected values for the library [" << _pathToLibrary
+               << "]:\n -- size: expected " << sizeof(PluginInfo)
+               << " | received " << size << "\n -- alignment: expected "
+               << alignof(PluginInfo) << " | received " << alignment << "\n"
+               << " -- We will not be able to safely load plugins from that "
+               << "library.\n";
 
         return loadedPlugins;
+      }
+
+      if (!allInfo)
+      {
+        ignerr << "The library [" << _pathToLibrary << "] failed to provide "
+               << "PluginInfo for unknown reasons. Please report this error as "
+               << "a bug!\n";
+        assert(false);
+
+        return loadedPlugins;
+      }
+
+      for (const PluginInfoMap::value_type &info : *allInfo)
+      {
+        loadedPlugins.push_back(info.second);
       }
 
       return loadedPlugins;

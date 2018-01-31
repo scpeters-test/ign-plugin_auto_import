@@ -150,7 +150,7 @@ namespace ignition
     SpecializedPlugin<SpecInterface>::SpecializedPlugin()
       : privateSpecInterfaceIterator(
           this->PrivateGetOrCreateIterator(
-            SpecInterface::IGNCOMMONInterfaceName))
+            typeid(SpecInterface).name()))
     {
       // Do nothing
     }
@@ -253,7 +253,7 @@ namespace ignition
         template <class...> friend class ignition::common::SpecializedPlugin;
         template <class, class> friend class ComposePlugin;
 
-        protected: ComposePlugin() = default;
+        private: ComposePlugin() = default;
       };
     }
 

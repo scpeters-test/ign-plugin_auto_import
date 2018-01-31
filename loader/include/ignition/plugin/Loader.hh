@@ -34,7 +34,6 @@ namespace ignition
   {
     /// \brief Forward declaration
     class PluginLoaderPrivate;
-    struct PluginInfo;
 
     /// \brief Class for loading plugins
     class IGNITION_COMMON_VISIBLE PluginLoader
@@ -49,15 +48,33 @@ namespace ignition
       /// \returns a pretty string
       public: std::string PrettyStr() const;
 
-      /// \brief get names of interfaces that the loader has plugins for
-      /// \returns interfaces that are implemented
+      /// \brief Get demangled names of interfaces that the loader has plugins
+      /// for.
+      /// \returns Demangled names of the interfaces that are implemented
       public: std::unordered_set<std::string> InterfacesImplemented() const;
 
-      /// \brief get plugin names that implement the interface
-      /// \param[in] _interface name of an interface
+      /// \brief Get plugin names that implement the specified interface
+      /// \return names of plugins that implement the interface.
+      public: template <typename Interface>
+      std::unordered_set<std::string> PluginsImplementing() const;
+
+      /// \brief Get plugin names that implement the specified interface string.
+      /// Note that the templated version of this function is recommended
+      /// instead of this version to avoid confusion about whether a mangled or
+      /// demangled version of a string is being used. Note that the function
+      /// InterfacesImplemented() returns demangled versions of the interface
+      /// names.
+      ///
+      /// If you want to pass in a mangled version of an interface name, e.g.
+      /// the result that would be produced by typeid(T).name(), then set
+      /// `demangled` to false.
+      /// \param[in] _interface Name of an interface
+      /// \param[in] _demangled Specify whether the _interface string is
+      /// demangled (default, true) or mangled (false).
       /// \returns names of plugins that implement the interface
       public: std::unordered_set<std::string> PluginsImplementing(
-                  const std::string &_interface) const;
+          const std::string &_interface,
+          const bool demangled = true) const;
 
       /// \brief Load a library at the given path
       /// \param[in] _pathToLibrary is the path to a libaray
@@ -137,12 +154,13 @@ namespace ignition
 
       IGN_COMMON_WARN_IGNORE__DLL_INTERFACE_MISSING
       /// \brief PIMPL pointer to class implementation
+      IGN_COMMON_WARN_IGNORE__DLL_INTERFACE_MISSING
       private: std::unique_ptr<PluginLoaderPrivate> dataPtr;
       IGN_COMMON_WARN_RESUME__DLL_INTERFACE_MISSING
     };
   }
 }
 
-#include "ignition/common/detail/PluginLoader.hh"
+#include <ignition/common/detail/PluginLoader.hh>
 
 #endif
