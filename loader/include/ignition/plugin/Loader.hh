@@ -25,6 +25,7 @@
 #include <unordered_set>
 
 #include <ignition/plugin/loader/Export.hh>
+#include <ignition/plugin/PluginPtr.hh>
 
 namespace ignition
 {
@@ -33,9 +34,6 @@ namespace ignition
     /// \brief Forward declaration
     class LoaderPrivate;
     struct Info;
-    class Plugin;
-
-    using PluginPtr = std::shared_ptr<Plugin>;
 
     /// \brief Class for loading plugins
     class IGNITION_PLUGIN_LOADER_VISIBLE Loader
@@ -72,6 +70,18 @@ namespace ignition
       /// \returns ptr to instantiated plugin
       public: PluginPtr Instantiate(const std::string &_pluginName) const;
 
+      /// \brief Instantiates a plugin of PluginType for the given plugin name.
+      /// This can be used to create a specialized PluginPtr.
+      ///
+      /// \param[in] PluginType The specialized type of PluginPtrPtr that you
+      /// want to construct.
+      /// \param[in] _pluginName The name of the plugin that you want to
+      /// instantiate
+      /// \returns pointer for the instantiated PluginPtr
+      public: template <typename PluginPtrType>
+              PluginPtrType Instantiate(
+                  const std::string &_pluginName) const;
+
       /// \brief Get a pointer to the PluginInfo corresponding to _pluginName.
       /// Returns nullptr if there is no info for the requested _pluginName.
       private: const Info *PrivateGetPluginInfo(
@@ -84,5 +94,7 @@ namespace ignition
     };
   }
 }
+
+#include "ignition/plugin/detail/Loader.hh"
 
 #endif

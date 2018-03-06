@@ -176,9 +176,7 @@ namespace ignition
     PluginPtr Loader::Instantiate(
         const std::string &_plugin) const
     {
-      PluginPtr instance = std::shared_ptr<Plugin>(new Plugin());
-      instance->PrivateSetPluginInstance(this->PrivateGetPluginInfo(_plugin));
-      return instance;
+      return PluginPtr(this->PrivateGetPluginInfo(_plugin));
     }
 
     /////////////////////////////////////////////////
@@ -191,7 +189,13 @@ namespace ignition
           this->dataPtr->plugins.find(plugin);
 
       if (this->dataPtr->plugins.end() == it)
+      {
+        std::cerr << "Failed to get info for plugin ["
+               << plugin
+               << "] since it has not been loaded."
+               << std::endl;
         return nullptr;
+      }
 
       return &(it->second);
     }

@@ -28,7 +28,7 @@ namespace ignition
   namespace plugin
   {
     /// \brief sentinel value to check if a plugin was built with the same
-    ///     version of the PluginInfo struct
+    /// version of the PluginInfo struct
     //
     /// This must be incremented when the PluginInfo struct changes
     const int IGN_PLUGIN_INFO_API_VERSION = 1;

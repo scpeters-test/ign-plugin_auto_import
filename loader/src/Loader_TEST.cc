@@ -66,6 +66,15 @@ TEST(Loader, LoadNonPluginLibrary)
 }
 
 /////////////////////////////////////////////////
+TEST(Loader, InstantiateUnloadedPlugin)
+{
+  ignition::plugin::Loader pm;
+  ignition::plugin::PluginPtr plugin =
+      pm.Instantiate("plugin::that::is::not::loaded");
+  EXPECT_FALSE(plugin);
+}
+
+/////////////////////////////////////////////////
 int main(int argc, char **argv)
 {
   ::testing::InitGoogleTest(&argc, argv);

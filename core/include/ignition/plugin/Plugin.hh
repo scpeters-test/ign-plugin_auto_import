@@ -33,7 +33,7 @@ namespace ignition
     // Forward declarations
     struct Info;
     class PluginPrivate;
-    class Loader;
+    namespace detail { template <class, class> class ComposePlugin; }
 
     class IGNITION_PLUGIN_VISIBLE Plugin
     {
@@ -147,7 +147,9 @@ namespace ignition
 
       // -------------------- Private API -----------------------
 
-      friend class Loader;
+      template <class> friend class TemplatePluginPtr;
+      template <class...> friend class SpecializedPlugin;
+      template <class, class> friend class detail::ComposePlugin;
 
       /// \brief Default constructor. This is kept private to ensure that
       /// Plugins are always managed by a PluginPtr object.
