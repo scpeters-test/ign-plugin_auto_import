@@ -16,8 +16,8 @@
  */
 
 
-#ifndef IGNITION_COMMON_PLUGINLOADER_HH_
-#define IGNITION_COMMON_PLUGINLOADER_HH_
+#ifndef IGNITION_PLUGIN_PLUGINLOADER_HH_
+#define IGNITION_PLUGIN_PLUGINLOADER_HH_
 
 #include <memory>
 #include <string>
@@ -25,6 +25,7 @@
 #include <unordered_set>
 
 #include <ignition/plugin/loader/Export.hh>
+#include <ignition/plugin/PluginPtr.hh>
 
 namespace ignition
 {
@@ -33,9 +34,6 @@ namespace ignition
     /// \brief Forward declaration
     class LoaderPrivate;
     struct Info;
-    class Plugin;
-
-    using PluginPtr = std::shared_ptr<Plugin>;
 
     /// \brief Class for loading plugins
     class IGNITION_PLUGIN_LOADER_VISIBLE Loader
@@ -72,17 +70,31 @@ namespace ignition
       /// \returns ptr to instantiated plugin
       public: PluginPtr Instantiate(const std::string &_pluginName) const;
 
+      /// \brief Instantiates a plugin of PluginType for the given plugin name.
+      /// This can be used to create a specialized PluginPtr.
+      ///
+      /// \param[in] PluginType The specialized type of PluginPtrPtr that you
+      /// want to construct.
+      /// \param[in] _pluginName The name of the plugin that you want to
+      /// instantiate
+      /// \returns pointer for the instantiated PluginPtr
+      public: template <typename PluginPtrType>
+              PluginPtrType Instantiate(
+                  const std::string &_pluginName) const;
+
       /// \brief Get a pointer to the PluginInfo corresponding to _pluginName.
       /// Returns nullptr if there is no info for the requested _pluginName.
       private: const Info *PrivateGetPluginInfo(
                   const std::string &_pluginName) const;
 
-//      IGN_COMMON_WARN_IGNORE__DLL_INTERFACE_MISSING
+//      IGN_PLUGIN_WARN_IGNORE__DLL_INTERFACE_MISSING
       /// \brief PIMPL pointer to class implementation
       private: std::unique_ptr<LoaderPrivate> dataPtr;
-//      IGN_COMMON_WARN_RESUME__DLL_INTERFACE_MISSING
+//      IGN_PLUGIN_WARN_RESUME__DLL_INTERFACE_MISSING
     };
   }
 }
+
+#include "ignition/plugin/detail/Loader.hh"
 
 #endif
