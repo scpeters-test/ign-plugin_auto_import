@@ -15,18 +15,19 @@
  *
 */
 
-#include <limits>
+#include <ignition/plugin/Register.hh>
 
-#include <ignition/plugin/Info.hh>
-
-#include "GenericExport.hh"
-
-extern "C" void EXPORT IgnitionPluginHook(
-    const void *,
-    const void ** const,
-    int *_inputAndOutputAPIVersion,
-    std::size_t *,
-    std::size_t *)
+class A
 {
-  *_inputAndOutputAPIVersion = std::numeric_limits<int>::max();
-}
+  // This pure virtual function makes A an abstract class
+  public: virtual void SomeFunction() = 0;
+
+  public: virtual ~A();
+};
+
+class B : public A
+{
+  // B is abstract because it does not implement SomeFunction
+};
+
+IGNITION_ADD_PLUGIN(B, A)

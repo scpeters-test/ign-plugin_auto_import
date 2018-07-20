@@ -15,18 +15,17 @@
  *
 */
 
-#include <limits>
 
-#include <ignition/plugin/Info.hh>
+#ifndef IGNITION_PLUGIN_REGISTER_HH_
+#define IGNITION_PLUGIN_REGISTER_HH_
 
-#include "GenericExport.hh"
+#include <ignition/plugin/detail/Register.hh>
 
-extern "C" void EXPORT IgnitionPluginHook(
-    const void *,
-    const void ** const,
-    int *_inputAndOutputAPIVersion,
-    std::size_t *,
-    std::size_t *)
-{
-  *_inputAndOutputAPIVersion = std::numeric_limits<int>::max();
-}
+
+// ------------- Add a set of plugins or a set of interfaces ------------------
+
+/// \brief Add a plugin and interface from this shared library.
+#define IGNITION_ADD_PLUGIN(...)\
+  DETAIL_IGNITION_ADD_PLUGIN(__VA_ARGS__)
+
+#endif
