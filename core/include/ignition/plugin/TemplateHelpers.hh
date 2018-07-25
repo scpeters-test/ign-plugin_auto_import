@@ -16,15 +16,15 @@
  */
 
 
-#ifndef IGNITION_COMMON_TEMPLATEHELPERS_HH_
-#define IGNITION_COMMON_TEMPLATEHELPERS_HH_
+#ifndef IGNITION_PLUGIN_TEMPLATEHELPERS_HH_
+#define IGNITION_PLUGIN_TEMPLATEHELPERS_HH_
 
 
-#include "ignition/common/detail/TemplateHelpers.hh"
+#include "ignition/plugin/detail/TemplateHelpers.hh"
 
 namespace ignition
 {
-  namespace common
+  namespace plugin
   {
     /// \brief Contains a static constexpr field named `value` which will be
     /// true if the type `From` has a const-quality less than or equal to the
@@ -32,12 +32,16 @@ namespace ignition
     ///
     /// The following expressions will return true:
     ///
+    /// \code
     ///     ConstCompatible<T, T>::value
     ///     ConstCompatible<const T, T>::value
+    /// \endcode
     ///
     /// The following expression will return false:
     ///
+    /// \code
     ///     ConstCompatible<T, const T>::value
+    /// \endcode
     ///
     template <typename To, typename From>
     using ConstCompatible = detail::ConstCompatible<To, From>;

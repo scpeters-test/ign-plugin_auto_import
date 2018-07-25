@@ -16,10 +16,11 @@
  */
 
 
-#ifndef IGNITION_COMMON_DETAIL_SPECIALIZEDPLUGIN_HH_
-#define IGNITION_COMMON_DETAIL_SPECIALIZEDPLUGIN_HH_
+#ifndef IGNITION_PLUGIN_DETAIL_SPECIALIZEDPLUGIN_HH_
+#define IGNITION_PLUGIN_DETAIL_SPECIALIZEDPLUGIN_HH_
 
-#include "ignition/common/SpecializedPlugin.hh"
+#include <memory>
+#include "ignition/plugin/SpecializedPlugin.hh"
 
 // This preprocessor token should only be used by the unittest that is
 // responsible for checking that the specialized routines are being used to
@@ -31,14 +32,14 @@ bool usedSpecializedInterfaceAccess;
 
 namespace ignition
 {
-  namespace common
+  namespace plugin
   {
     /////////////////////////////////////////////////
     template <class SpecInterface>
     template <class Interface>
     Interface *SpecializedPlugin<SpecInterface>::QueryInterface()
     {
-      return this->PrivateGetSpecInterface(type<Interface>());
+      return this->PrivateQueryInterface(type<Interface>());
     }
 
     /////////////////////////////////////////////////
@@ -46,7 +47,7 @@ namespace ignition
     template <class Interface>
     const Interface *SpecializedPlugin<SpecInterface>::QueryInterface() const
     {
-      return this->PrivateGetSpecInterface(type<Interface>());
+      return this->PrivateQueryInterface(type<Interface>());
     }
 
     /////////////////////////////////////////////////
@@ -80,13 +81,13 @@ namespace ignition
     template <class Interface>
     bool SpecializedPlugin<SpecInterface>::HasInterface() const
     {
-      return this->PrivateHasSpecInterface(type<Interface>());
+      return this->PrivateHasInterface(type<Interface>());
     }
 
     /////////////////////////////////////////////////
     template <class SpecInterface>
     template <class Interface>
-    Interface *SpecializedPlugin<SpecInterface>::PrivateGetSpecInterface(
+    Interface *SpecializedPlugin<SpecInterface>::PrivateQueryInterface(
         type<Interface>)
     {
       return this->Plugin::QueryInterface<Interface>();
@@ -94,21 +95,21 @@ namespace ignition
 
     /////////////////////////////////////////////////
     template <class SpecInterface>
-    SpecInterface *SpecializedPlugin<SpecInterface>::PrivateGetSpecInterface(
+    SpecInterface *SpecializedPlugin<SpecInterface>::PrivateQueryInterface(
         type<SpecInterface>)
     {
       #ifdef IGNITION_UNITTEST_SPECIALIZED_PLUGIN_ACCESS
       usedSpecializedInterfaceAccess = true;
       #endif
       return static_cast<SpecInterface*>(
-            this->privateSpecInterfaceIterator->second);
+            this->privateSpecializedInterfaceIterator->second);
     }
 
     /////////////////////////////////////////////////
     template <class SpecInterface>
     template <class Interface>
     const Interface *SpecializedPlugin<SpecInterface>::
-    PrivateGetSpecInterface(type<Interface>) const
+    PrivateQueryInterface(type<Interface>) const
     {
       return this->Plugin::QueryInterface<Interface>();
     }
@@ -116,19 +117,19 @@ namespace ignition
     /////////////////////////////////////////////////
     template <class SpecInterface>
     const SpecInterface *SpecializedPlugin<SpecInterface>::
-    PrivateGetSpecInterface(type<SpecInterface>) const
+    PrivateQueryInterface(type<SpecInterface>) const
     {
       #ifdef IGNITION_UNITTEST_SPECIALIZED_PLUGIN_ACCESS
       usedSpecializedInterfaceAccess = true;
       #endif
       return static_cast<SpecInterface*>(
-            this->privateSpecInterfaceIterator->second);
+            this->privateSpecializedInterfaceIterator->second);
     }
 
     /////////////////////////////////////////////////
     template <class SpecInterface>
     template <class Interface>
-    bool SpecializedPlugin<SpecInterface>::PrivateHasSpecInterface(
+    bool SpecializedPlugin<SpecInterface>::PrivateHasInterface(
         type<Interface>) const
     {
       return this->Plugin::HasInterface<Interface>();
@@ -136,21 +137,21 @@ namespace ignition
 
     /////////////////////////////////////////////////
     template <class SpecInterface>
-    bool SpecializedPlugin<SpecInterface>::PrivateHasSpecInterface(
+    bool SpecializedPlugin<SpecInterface>::PrivateHasInterface(
         type<SpecInterface>) const
     {
       #ifdef IGNITION_UNITTEST_SPECIALIZED_PLUGIN_ACCESS
       usedSpecializedInterfaceAccess = true;
       #endif
-      return (nullptr != this->privateSpecInterfaceIterator->second);
+      return (nullptr != this->privateSpecializedInterfaceIterator->second);
     }
 
     /////////////////////////////////////////////////
     template <class SpecInterface>
     SpecializedPlugin<SpecInterface>::SpecializedPlugin()
-      : privateSpecInterfaceIterator(
+      : privateSpecializedInterfaceIterator(
           this->PrivateGetOrCreateIterator(
-            SpecInterface::IGNCOMMONInterfaceName))
+            SpecInterface::IGNPLUGINInterfaceName))
     {
       // Do nothing
     }
@@ -193,7 +194,7 @@ namespace ignition
       /// \brief ComposePlugin provides a way for a multi-specialized Plugin
       /// type to find its specializations within itself each time an
       /// interface-querying function is called. The macro
-      /// DETAIL_IGN_COMMON_COMPOSEPLUGIN_DISPATCH accomplishes this for each
+      /// DETAIL_IGN_PLUGIN_COMPOSEPLUGIN_DISPATCH accomplishes this for each
       /// of the different functions by doing a compile-time check on whether
       /// Base2 contains the specialization, and then picks Base1 if it does
       /// not.
@@ -220,37 +221,37 @@ namespace ignition
         /// specializes for the requested Interface, if such a type is availabe
         /// within its inheritance structure. Otherwise, we cast to the generic
         /// Plugin type.
-        #define DETAIL_IGN_COMMON_COMPOSEPLUGIN_DISPATCH( \
+#define DETAIL_IGN_PLUGIN_COMPOSEPLUGIN_DISPATCH( \
                       ReturnType, Function, Suffix, CastTo, Args) \
-          public: \
-          template <class T> \
-          ReturnType Function Suffix \
-          { \
-            using Specializer = typename detail::SelectSpecalizerIfAvailable< \
-                    T, Specialization>::Specializer; \
-            return static_cast<CastTo*>(this)->template Function <T> Args; \
-          }
+        public: \
+        template <class T> \
+        ReturnType Function Suffix \
+        { \
+          using Specializer = typename detail::SelectSpecalizerIfAvailable< \
+                  T, Specialization>::Specializer; \
+          return static_cast<CastTo*>(this)->template Function <T> Args; \
+        }
 
 
-        DETAIL_IGN_COMMON_COMPOSEPLUGIN_DISPATCH(
+        DETAIL_IGN_PLUGIN_COMPOSEPLUGIN_DISPATCH(
             T*, QueryInterface, (), Specializer, ())
 
-        DETAIL_IGN_COMMON_COMPOSEPLUGIN_DISPATCH(
+        DETAIL_IGN_PLUGIN_COMPOSEPLUGIN_DISPATCH(
             const T*, QueryInterface, () const, const Specializer, ())
 
-        DETAIL_IGN_COMMON_COMPOSEPLUGIN_DISPATCH(
+        DETAIL_IGN_PLUGIN_COMPOSEPLUGIN_DISPATCH(
             std::shared_ptr<T>, QueryInterfaceSharedPtr, (), Specializer, ())
 
-        DETAIL_IGN_COMMON_COMPOSEPLUGIN_DISPATCH(
+        DETAIL_IGN_PLUGIN_COMPOSEPLUGIN_DISPATCH(
             std::shared_ptr<const T>, QueryInterfaceSharedPtr,
             () const, const Specializer, ())
 
-        DETAIL_IGN_COMMON_COMPOSEPLUGIN_DISPATCH(
+        DETAIL_IGN_PLUGIN_COMPOSEPLUGIN_DISPATCH(
             bool, HasInterface, () const, const Specializer, ())
 
 
         // Declare friendship
-        template <class...> friend class ignition::common::SpecializedPlugin;
+        template <class...> friend class ignition::plugin::SpecializedPlugin;
         template <class, class> friend class ComposePlugin;
 
         private: ComposePlugin() = default;

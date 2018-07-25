@@ -16,34 +16,35 @@
  */
 
 
-#ifndef IGNITION_COMMON_PLUGINLOADER_HH_
-#define IGNITION_COMMON_PLUGINLOADER_HH_
+#ifndef IGNITION_PLUGIN_PLUGINLOADER_HH_
+#define IGNITION_PLUGIN_PLUGINLOADER_HH_
 
 #include <memory>
 #include <string>
 #include <typeinfo>
 #include <unordered_set>
 
-#include <ignition/common/Export.hh>
-#include <ignition/common/SuppressWarning.hh>
-#include <ignition/common/PluginPtr.hh>
+#include <ignition/utilities/SuppressWarning.hh>
+
+#include <ignition/plugin/loader/Export.hh>
+#include <ignition/plugin/PluginPtr.hh>
 
 namespace ignition
 {
-  namespace common
+  namespace plugin
   {
     /// \brief Forward declaration
-    class PluginLoaderPrivate;
-    struct PluginInfo;
+    class LoaderPrivate;
+    struct Info;
 
     /// \brief Class for loading plugins
-    class IGNITION_COMMON_VISIBLE PluginLoader
+    class IGNITION_PLUGIN_LOADER_VISIBLE Loader
     {
       /// \brief Constructor
-      public: PluginLoader();
+      public: Loader();
 
       /// \brief Destructor
-      public: ~PluginLoader();
+      public: ~Loader();
 
       /// \brief Makes a printable string with info about plugins
       /// \returns A pretty string
@@ -88,17 +89,17 @@ namespace ignition
       /// instantiate
       /// \return Pointer to PluginInfo or nullptr if there is no info for the
       /// requested _pluginName.
-      private: const PluginInfo *PrivateGetPluginInfo(
+      private: const Info *PrivateGetPluginInfo(
                   const std::string &_pluginName) const;
 
-      IGN_COMMON_WARN_IGNORE__DLL_INTERFACE_MISSING
+      IGN_UTILS_WARN_IGNORE__DLL_INTERFACE_MISSING
       /// \brief PIMPL pointer to class implementation
-      private: std::unique_ptr<PluginLoaderPrivate> dataPtr;
-      IGN_COMMON_WARN_RESUME__DLL_INTERFACE_MISSING
+      private: std::unique_ptr<LoaderPrivate> dataPtr;
+      IGN_UTILS_WARN_RESUME__DLL_INTERFACE_MISSING
     };
   }
 }
 
-#include "ignition/common/detail/PluginLoader.hh"
+#include "ignition/plugin/detail/Loader.hh"
 
 #endif

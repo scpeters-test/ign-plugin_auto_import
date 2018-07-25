@@ -16,18 +16,18 @@
  */
 
 
-#ifndef IGNITION_COMMON_DETAIL_PLUGINLOADER_HH_
-#define IGNITION_COMMON_DETAIL_PLUGINLOADER_HH_
+#ifndef IGNITION_PLUGIN_DETAIL_PLUGINLOADER_HH_
+#define IGNITION_PLUGIN_DETAIL_PLUGINLOADER_HH_
 
 #include <string>
-#include "ignition/common/PluginLoader.hh"
+#include <ignition/plugin/Loader.hh>
 
 namespace ignition
 {
-  namespace common
+  namespace plugin
   {
     template <typename PluginPtrType>
-    PluginPtrType PluginLoader::Instantiate(
+    PluginPtrType Loader::Instantiate(
         const std::string &_pluginName) const
     {
       return PluginPtrType(this->PrivateGetPluginInfo(_pluginName));
