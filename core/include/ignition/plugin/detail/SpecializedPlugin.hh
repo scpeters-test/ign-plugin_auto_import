@@ -258,6 +258,13 @@ namespace ignition
 
         private: ComposePlugin() = default;
       };
+
+      /// \brief This template specialization is used when Base1 and Base2 are
+      /// identical. It dodges a compilation error that occurs when a class
+      /// tries to double-inherit a direct base class.
+      template <class RepeatedBase>
+      class ComposePlugin<RepeatedBase, RepeatedBase>
+          : public virtual RepeatedBase { };  // NOLINT
     }
 
     /// \brief Construct an unbalanced binary tree of specializations by
@@ -279,6 +286,10 @@ namespace ignition
       /// \brief Default constructor
       private: SpecializedPlugin() = default;
     };
+
+    /// \brief Allow empty specializations of SpecializedPlugin
+    template <>
+    class SpecializedPlugin<> : public virtual Plugin { }; // NOLINT
   }
 }
 
