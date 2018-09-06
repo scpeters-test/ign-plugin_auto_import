@@ -91,5 +91,8 @@ IGNITION_ADD_PLUGIN(
 }
 
 IGNITION_ADD_PLUGIN(test::util::DummySinglePlugin, test::util::DummyNameBase)
+IGNITION_ADD_PLUGIN_ALIAS(test::util::DummySinglePlugin, "Alternative name")
+IGNITION_ADD_PLUGIN_ALIAS(test::util::DummySinglePlugin, "Bar", "Baz")
 
 IGNITION_ADD_PLUGIN(test::util::DummyMultiPlugin, test::util::DummyNameBase)
+IGNITION_ADD_PLUGIN_ALIAS(test::util::DummyMultiPlugin, "Foo", "Bar", "Baz")
