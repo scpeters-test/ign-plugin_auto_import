@@ -139,6 +139,31 @@ namespace ignition
       public: template <typename PluginPtrType>
       PluginPtrType Instantiate(const std::string &_pluginNameOrAlias) const;
 
+      /// \brief Instantiates a plugin for the given plugin name, and then
+      /// returns a reference-counting interface corresponding to InterfaceType.
+      ///
+      /// If you use this function to retrieve a Factory, you can call
+      /// Construct(...) on the returned interface, as long as the returned
+      /// interface is not a nullptr.
+      ///
+      /// \remark This function is identical to:
+      ///
+      /// \code
+      /// loader->Instantiate(_pluginName)
+      ///   ->QueryInterfaceSharedPtr<InterfaceType>();
+      /// \endcode
+      ///
+      /// \tparam InterfaceType
+      ///   The type of interface to look for. This function is meant for
+      ///   producing Factories, but any type of Interface can be requested.
+      /// \param[in] _pluginName
+      ///   The name of the plugin that you want to use for production.
+      /// \return reference to an InterfaceType if it can be provided by the
+      /// requested plugin.
+      public: template <typename InterfaceType>
+      std::shared_ptr<InterfaceType> Factory(
+          const std::string &_pluginName) const;
+
       /// \brief This loader will forget about the library at the given path
       /// location. If you want to instantiate a plugin from this library using
       /// this loader, you will first need to call LoadLibrary again.
@@ -181,7 +206,7 @@ namespace ignition
       /// \return Pointer to the corresponding Info, or nullptr if there
       /// is no info for the requested _pluginName.
       private: ConstInfoPtr PrivateGetInfo(
-                  const std::string &_resolvedName) const;
+          const std::string &_resolvedName) const;
 
       /// \brief Get a std::shared_ptr that manages the lifecycle of the shared
       /// library handle which provides the specified plugin.
@@ -192,7 +217,7 @@ namespace ignition
       /// \return Reference-counting pointer to a library handle, or else a
       /// nullptr if the plugin is not available.
       private: std::shared_ptr<void> PrivateGetPluginDlHandlePtr(
-                  const std::string &_resolvedName) const;
+          const std::string &_resolvedName) const;
 
       class Implementation;
       IGN_UTILS_WARN_IGNORE__DLL_INTERFACE_MISSING

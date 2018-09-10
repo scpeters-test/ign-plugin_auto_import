@@ -24,6 +24,14 @@ namespace test
 namespace util
 {
 
+class DummySinglePlugin : public DummyNameBase
+{
+  public: virtual std::string MyNameIs() const override
+  {
+    return std::string("DummySinglePlugin");
+  }
+};
+
 class DummyNoAliasPlugin : public DummyNameBase
 {
   public: std::string MyNameIs() const override
@@ -32,11 +40,6 @@ class DummyNoAliasPlugin : public DummyNameBase
   }
 };
 IGNITION_ADD_PLUGIN(DummyNoAliasPlugin, DummyNameBase)
-
-std::string DummySinglePlugin::MyNameIs() const
-{
-  return std::string("DummySinglePlugin");
-}
 
 std::string DummyMultiPlugin::MyNameIs() const
 {
